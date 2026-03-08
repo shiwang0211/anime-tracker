@@ -1,8 +1,8 @@
-import { fetchCurrentSeasonAnime } from "@/services/anime";
+import { fetchCurrentSeasonAnime, Anime } from "@/services/anime";
 import { AnimeGrid } from "@/components/AnimeGrid";
 
 export default async function Home() {
-  let animeList = [];
+  let animeList: Anime[] = [];
   let error: string | null = null;
 
   try {
