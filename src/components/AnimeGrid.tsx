@@ -14,18 +14,30 @@ const FILTER_LABELS: Record<Filter, string> = {
 };
 
 export function AnimeGrid({ animeList }: { animeList: Anime[] }) {
-  const { watched, toggleWatched, setRating } = useWatchedAnime();
+  const { watched, toggleWatched, setRating, setCompletionStatus, setEpisodeProgress } = useWatchedAnime();
   const [filter, setFilter] = useState<Filter>("all");
+  const [yearFilter, setYearFilter] = useState<string>("all");
+
+  // 功能3: 从 air_date 提取所有年份，降序排列
+  const years = Array.from(
+    new Set(
+      animeList
+        .map((a) => a.air_date?.slice(0, 4))
+        .filter((y): y is string => Boolean(y))
+    )
+  ).sort((a, b) => b.localeCompare(a));
 
   const filtered = animeList.filter((anime) => {
-    if (filter === "watched") return watched[anime.id]?.watched;
-    if (filter === "unwatched") return !watched[anime.id]?.watched;
+    if (filter === "watched" && !watched[anime.id]?.watched) return false;
+    if (filter === "unwatched" && watched[anime.id]?.watched) return false;
+    if (yearFilter !== "all" && anime.air_date?.slice(0, 4) !== yearFilter) return false;
     return true;
   });
 
   return (
     <>
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap items-center gap-2 mb-6">
+        {/* 观看状态筛选 */}
         {(Object.keys(FILTER_LABELS) as Filter[]).map((f) => (
           <button
             key={f}
@@ -39,6 +51,20 @@ export function AnimeGrid({ animeList }: { animeList: Anime[] }) {
             {FILTER_LABELS[f]}
           </button>
         ))}
+
+        {/* 功能3: 年份筛选下拉栏 */}
+        {years.length > 0 && (
+          <select
+            value={yearFilter}
+            onChange={(e) => setYearFilter(e.target.value)}
+            className="ml-auto bg-zinc-800 text-zinc-300 text-sm rounded-full px-3 py-1.5 border border-zinc-700 focus:outline-none focus:border-pink-500 cursor-pointer"
+          >
+            <option value="all">全部年份</option>
+            {years.map((y) => (
+              <option key={y} value={y}>{y} 年</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -54,6 +80,8 @@ export function AnimeGrid({ animeList }: { animeList: Anime[] }) {
               entry={watched[anime.id]}
               onToggleWatched={toggleWatched}
               onSetRating={setRating}
+              onSetCompletionStatus={setCompletionStatus}
+              onSetEpisodeProgress={setEpisodeProgress}
             />
           ))}
         </div>

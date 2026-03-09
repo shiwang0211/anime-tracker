@@ -4,7 +4,7 @@ export interface Anime {
   image_url: string;
   score: number | null;
   air_date: string | null;
-  tags: string[];
+  weekday: string | null;
 }
 
 interface BangumiImage {
@@ -43,8 +43,6 @@ interface BangumiSubjectDetail {
   tags: BangumiTag[];
 }
 
-const EXCLUDED_TAGS = new Set(["TV", "日本"]);
-
 async function fetchSubjectTags(id: number): Promise<BangumiTag[]> {
   try {
     const res = await fetch(`https://api.bgm.tv/v0/subjects/${id}`, {
@@ -75,36 +73,41 @@ export async function fetchCurrentSeasonAnime(): Promise<Anime[]> {
 
   const calendar: BangumiCalendarEntry[] = await res.json();
 
-  // Deduplicate by ID
+  // Deduplicate by ID, preserving weekday info
   const seen = new Set<number>();
-  const items = calendar.flatMap((entry) => entry.items).filter((item) => {
-    if (seen.has(item.id)) return false;
-    seen.add(item.id);
-    return true;
-  });
+  const itemsWithWeekday: Array<{ item: BangumiCalendarItem; weekday: string }> = [];
+  for (const entry of calendar) {
+    for (const item of entry.items) {
+      if (!seen.has(item.id)) {
+        seen.add(item.id);
+        itemsWithWeekday.push({ item, weekday: entry.weekday.cn });
+      }
+    }
+  }
 
   // Fetch tags for all items in parallel
-  const allTags = await Promise.all(items.map((item) => fetchSubjectTags(item.id)));
+  const allTags = await Promise.all(itemsWithWeekday.map(({ item }) => fetchSubjectTags(item.id)));
 
-  // Filter Japanese only, then sort by score descending
-  return items
-    .map((item, i) => {
+  // Filter Japanese only, exclude 2008 and earlier, sort by score descending
+  return itemsWithWeekday
+    .map(({ item, weekday }, i) => {
       const tags = allTags[i];
       const isJapanese = tags.some((t) => t.name === "日本");
-      const displayTags = tags
-        .filter((t) => !EXCLUDED_TAGS.has(t.name))
-        .slice(0, 3)
-        .map((t) => t.name);
-      return { item, tags, isJapanese, displayTags };
+      return { item, weekday, isJapanese };
     })
-    .filter(({ isJapanese }) => isJapanese)
+    .filter(({ isJapanese, item }) => {
+      if (!isJapanese) return false;
+      const year = item.air_date ? parseInt(item.air_date.slice(0, 4)) : null;
+      if (year !== null && year <= 2008) return false;
+      return true;
+    })
     .sort((a, b) => (b.item.rating?.score ?? 0) - (a.item.rating?.score ?? 0))
-    .map(({ item, displayTags }) => ({
+    .map(({ item, weekday }) => ({
       id: item.id,
       title: item.name_cn || item.name,
       image_url: item.images.large,
       score: item.rating?.score ?? null,
       air_date: item.air_date || null,
-      tags: displayTags,
+      weekday: weekday,
     }));
 }
