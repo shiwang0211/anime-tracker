@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { Star, Eye, EyeOff } from "lucide-react";
+
+const RATING_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 import type { Anime } from "@/services/anime";
 import type { WatchEntry } from "@/hooks/useWatchedAnime";
 
@@ -23,9 +25,9 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
   // 封面底部：完结状态标签文字
   const completionBadge =
     completionStatus === "completed"
-      ? "已追完"
+      ? "追完"
       : completionStatus === "ongoing" && episodeProgress !== null
-      ? `追到第${episodeProgress}集`
+      ? `第${episodeProgress}集`
       : null;
 
   return (
@@ -98,23 +100,20 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
         {isWatched && (
           <>
             {/* 用户评分 */}
-            <div className="flex items-center gap-1 mt-1 flex-wrap">
-              <span className="text-zinc-500 text-xs mr-0.5">用户评分</span>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((star) => (
-                <button
-                  key={star}
-                  onClick={() => onSetRating(anime.id, star)}
-                  className="text-zinc-600 hover:text-green-400 transition-colors"
-                >
-                  <Star
-                    size={12}
-                    fill={userRating !== null && star <= userRating ? "currentColor" : "none"}
-                    className={userRating !== null && star <= userRating ? "text-green-400" : ""}
-                  />
-                </button>
-              ))}
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-zinc-500 text-xs">用户评分</span>
+              <select
+                value={userRating ?? ""}
+                onChange={(e) => onSetRating(anime.id, parseInt(e.target.value))}
+                className="bg-zinc-800 text-green-400 text-xs rounded px-1.5 py-0.5 border-none focus:outline-none cursor-pointer"
+              >
+                <option value="" disabled>-</option>
+                {RATING_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
               {userRating !== null && (
-                <span className="text-zinc-500 text-xs ml-0.5">{userRating}/10</span>
+                <span className="text-zinc-500 text-xs">/10</span>
               )}
             </div>
 
@@ -128,7 +127,7 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
                     : "bg-zinc-800 text-zinc-400 hover:text-white"
                 }`}
               >
-                已追完
+                追完
               </button>
               <button
                 onClick={() => onSetCompletionStatus(anime.id, "ongoing")}
@@ -138,11 +137,11 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
                     : "bg-zinc-800 text-zinc-400 hover:text-white"
                 }`}
               >
-                未追完
+                在追
               </button>
               {completionStatus === "ongoing" && (
                 <>
-                  <span className="text-zinc-500 text-xs">追到第</span>
+                  <span className="text-zinc-500 text-xs">第</span>
                   <input
                     type="number"
                     min={0}

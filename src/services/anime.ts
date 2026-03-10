@@ -7,6 +7,16 @@ export interface Anime {
   weekday: string | null;
 }
 
+export type SeasonMonth = 1 | 4 | 7 | 10;
+
+export function getCurrentSeason(): { year: number; month: SeasonMonth } {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const month: SeasonMonth = m <= 3 ? 1 : m <= 6 ? 4 : m <= 9 ? 7 : 10;
+  return { year, month };
+}
+
 interface BangumiImage {
   large: string;
   common: string;
@@ -15,99 +25,97 @@ interface BangumiImage {
   grid: string;
 }
 
-interface BangumiRating {
-  total: number;
-  score: number;
-}
-
-interface BangumiCalendarItem {
+interface BangumiSearchSubject {
   id: number;
   name: string;
   name_cn: string;
   images: BangumiImage;
-  rating?: BangumiRating;
-  air_date: string;
+  rating?: { rank: number; score: number; total: number };
+  date: string;
+  air_weekday?: number;
 }
 
-interface BangumiCalendarEntry {
-  weekday: { cn: string; id: number };
-  items: BangumiCalendarItem[];
+interface BangumiSearchResponse {
+  total: number;
+  limit: number;
+  offset: number;
+  data: BangumiSearchSubject[] | null;
 }
 
-interface BangumiTag {
-  name: string;
-  count: number;
+const WEEKDAY_CN: Record<number, string> = {
+  1: "周一", 2: "周二", 3: "周三", 4: "周四",
+  5: "周五", 6: "周六", 7: "周日",
+};
+
+const SEASON_END: Record<SeasonMonth, string> = {
+  1: "03-31", 4: "06-30", 7: "09-30", 10: "12-31",
+};
+
+const BANGUMI_HEADERS = {
+  "User-Agent": "anime-tracker/1.0 (https://github.com/example/anime-tracker)",
+  "Content-Type": "application/json",
+  "Accept": "application/json",
+};
+
+const LIMIT = 50;
+
+async function searchPage(
+  startDate: string,
+  endDate: string,
+  offset: number,
+  revalidate: number
+): Promise<BangumiSearchResponse> {
+  const res = await fetch(
+    `https://api.bgm.tv/v0/search/subjects?limit=${LIMIT}&offset=${offset}`,
+    {
+      method: "POST",
+      headers: BANGUMI_HEADERS,
+      body: JSON.stringify({
+        filter: {
+          type: [2],
+          air_date: [`>=${startDate}`, `<=${endDate}`],
+          tag: ["日本"],
+        },
+        sort: "rank",
+      }),
+      next: { revalidate },
+    }
+  );
+  if (!res.ok) throw new Error(`Bangumi API error: ${res.status}`);
+  return res.json();
 }
 
-interface BangumiSubjectDetail {
-  tags: BangumiTag[];
-}
+export async function fetchAnimeBySeason(year: number, month: SeasonMonth): Promise<Anime[]> {
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = `${year}-${SEASON_END[month]}`;
+  const { year: currentYear, month: currentMonth } = getCurrentSeason();
+  const isPast = year < currentYear || (year === currentYear && month < currentMonth);
+  const revalidate = isPast ? 86400 : 3600;
 
-async function fetchSubjectTags(id: number): Promise<BangumiTag[]> {
-  try {
-    const res = await fetch(`https://api.bgm.tv/v0/subjects/${id}`, {
-      headers: {
-        "User-Agent": "anime-tracker/1.0 (https://github.com/example/anime-tracker)",
-      },
-      next: { revalidate: 3600 },
-    });
-    if (!res.ok) return [];
-    const data: BangumiSubjectDetail = await res.json();
-    return data.tags ?? [];
-  } catch {
-    return [];
-  }
-}
+  // First page to get total
+  const firstPage = await searchPage(startDate, endDate, 0, revalidate);
+  const results: BangumiSearchSubject[] = [...(firstPage.data ?? [])];
+  const total = firstPage.total;
 
-export async function fetchCurrentSeasonAnime(): Promise<Anime[]> {
-  const res = await fetch("https://api.bgm.tv/calendar", {
-    headers: {
-      "User-Agent": "anime-tracker/1.0 (https://github.com/example/anime-tracker)",
-    },
-    next: { revalidate: 3600 },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Bangumi API error: ${res.status}`);
-  }
-
-  const calendar: BangumiCalendarEntry[] = await res.json();
-
-  // Deduplicate by ID, preserving weekday info
-  const seen = new Set<number>();
-  const itemsWithWeekday: Array<{ item: BangumiCalendarItem; weekday: string }> = [];
-  for (const entry of calendar) {
-    for (const item of entry.items) {
-      if (!seen.has(item.id)) {
-        seen.add(item.id);
-        itemsWithWeekday.push({ item, weekday: entry.weekday.cn });
-      }
+  // Remaining pages in parallel
+  const remaining = Math.ceil((total - LIMIT) / LIMIT);
+  if (remaining > 0) {
+    const pages = await Promise.all(
+      Array.from({ length: remaining }, (_, i) =>
+        searchPage(startDate, endDate, (i + 1) * LIMIT, revalidate)
+      )
+    );
+    for (const page of pages) {
+      results.push(...(page.data ?? []));
     }
   }
 
-  // Fetch tags for all items in parallel
-  const allTags = await Promise.all(itemsWithWeekday.map(({ item }) => fetchSubjectTags(item.id)));
-
-  // Filter Japanese only, exclude 2008 and earlier, sort by score descending
-  return itemsWithWeekday
-    .map(({ item, weekday }, i) => {
-      const tags = allTags[i];
-      const isJapanese = tags.some((t) => t.name === "日本");
-      return { item, weekday, isJapanese };
-    })
-    .filter(({ isJapanese, item }) => {
-      if (!isJapanese) return false;
-      const year = item.air_date ? parseInt(item.air_date.slice(0, 4)) : null;
-      if (year !== null && year <= 2008) return false;
-      return true;
-    })
-    .sort((a, b) => (b.item.rating?.score ?? 0) - (a.item.rating?.score ?? 0))
-    .map(({ item, weekday }) => ({
-      id: item.id,
-      title: item.name_cn || item.name,
-      image_url: item.images.large,
-      score: item.rating?.score ?? null,
-      air_date: item.air_date || null,
-      weekday: weekday,
-    }));
+  return results.map((item) => ({
+    id: item.id,
+    title: item.name_cn || item.name,
+    image_url: item.images?.large ?? "",
+    score: item.rating?.score ?? null,
+    air_date: item.date || null,
+    weekday: item.air_weekday ? (WEEKDAY_CN[item.air_weekday] ?? null) : null,
+  }));
 }

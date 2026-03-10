@@ -1,12 +1,13 @@
-import { fetchCurrentSeasonAnime, Anime } from "@/services/anime";
+import { fetchAnimeBySeason, getCurrentSeason, type Anime } from "@/services/anime";
 import { AnimeGrid } from "@/components/AnimeGrid";
 
 export default async function Home() {
+  const { year, month } = getCurrentSeason();
   let animeList: Anime[] = [];
   let error: string | null = null;
 
   try {
-    animeList = await fetchCurrentSeasonAnime();
+    animeList = await fetchAnimeBySeason(year, month);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch anime";
   }
@@ -25,7 +26,7 @@ export default async function Home() {
             <p className="text-red-400 text-sm">{error}</p>
           </div>
         ) : (
-          <AnimeGrid animeList={animeList} />
+          <AnimeGrid initialAnimeList={animeList} initialYear={year} initialMonth={month} />
         )}
       </main>
     </div>

@@ -22,16 +22,46 @@ function load(): WatchedMap {
   }
 }
 
-function save(data: WatchedMap) {
+function saveLocal(data: WatchedMap) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function syncToServer(data: WatchedMap) {
+  fetch("/api/watched", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  }).catch(() => {});
 }
 
 export function useWatchedAnime() {
   const [watched, setWatched] = useState<WatchedMap>({});
 
   useEffect(() => {
-    setWatched(load());
+    // 优先从服务端加载，服务端无数据则尝试上传本地数据
+    fetch("/api/watched")
+      .then((r) => r.json())
+      .then((serverData: WatchedMap) => {
+        if (Object.keys(serverData).length > 0) {
+          setWatched(serverData);
+          saveLocal(serverData);
+        } else {
+          const localData = load();
+          setWatched(localData);
+          if (Object.keys(localData).length > 0) {
+            syncToServer(localData); // 将本地历史数据迁移到服务端
+          }
+        }
+      })
+      .catch(() => {
+        setWatched(load()); // 服务端不可用时降级到本地
+      });
   }, []);
+
+  function persist(updated: WatchedMap) {
+    saveLocal(updated);
+    syncToServer(updated);
+  }
 
   function toggleWatched(id: number) {
     setWatched((prev) => {
@@ -40,7 +70,7 @@ export function useWatchedAnime() {
         ? { ...current, watched: false, rating: null, completionStatus: null, episodeProgress: null }
         : { watched: true, rating: null, completionStatus: null, episodeProgress: null };
       const updated = { ...prev, [id]: next };
-      save(updated);
+      persist(updated);
       return updated;
     });
   }
@@ -48,11 +78,8 @@ export function useWatchedAnime() {
   function setRating(id: number, rating: number) {
     setWatched((prev) => {
       const current = prev[id];
-      const updated = {
-        ...prev,
-        [id]: { ...current, watched: true, rating },
-      };
-      save(updated);
+      const updated = { ...prev, [id]: { ...current, watched: true, rating } };
+      persist(updated);
       return updated;
     });
   }
@@ -69,7 +96,7 @@ export function useWatchedAnime() {
           episodeProgress: status === "completed" ? null : current?.episodeProgress ?? null,
         },
       };
-      save(updated);
+      persist(updated);
       return updated;
     });
   }
@@ -77,11 +104,8 @@ export function useWatchedAnime() {
   function setEpisodeProgress(id: number, ep: number | null) {
     setWatched((prev) => {
       const current = prev[id];
-      const updated = {
-        ...prev,
-        [id]: { ...current, watched: true, episodeProgress: ep },
-      };
-      save(updated);
+      const updated = { ...prev, [id]: { ...current, watched: true, episodeProgress: ep } };
+      persist(updated);
       return updated;
     });
   }
