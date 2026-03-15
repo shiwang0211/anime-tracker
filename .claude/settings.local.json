@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://api.bgm.tv/v0/subjects/443106\" -H \"User-Agent: anime-tracker/1.0\" | python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); print\\(json.dumps\\(data.get\\('tags', []\\)[:10], indent=2, ensure_ascii=False\\)\\); print\\('platform:', data.get\\('platform'\\)\\); print\\('date:', data.get\\('date'\\)\\)\")"
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Star, Eye, EyeOff } from "lucide-react";
+import { Star, Eye, EyeOff, Bookmark } from "lucide-react";
 
 const RATING_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 import type { Anime } from "@/services/anime";
@@ -18,6 +18,7 @@ interface AnimeCardProps {
 
 export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCompletionStatus, onSetEpisodeProgress }: AnimeCardProps) {
   const isWatched = entry?.watched ?? false;
+  const isWantToWatch = entry?.wantToWatch ?? false;
   const userRating = entry?.rating ?? null;
   const completionStatus = entry?.completionStatus ?? null;
   const episodeProgress = entry?.episodeProgress ?? null;
@@ -63,12 +64,14 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
             className={`flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full transition-colors ${
               isWatched
                 ? "bg-pink-500 text-white"
+                : isWantToWatch
+                ? "bg-indigo-500 text-white"
                 : "bg-black/50 text-zinc-300 hover:bg-white/20 hover:text-white"
             }`}
-            title={isWatched ? "取消已看" : "标记为已看"}
+            title={isWatched ? "切换到想看" : isWantToWatch ? "取消" : "标记为已看"}
           >
-            {isWatched ? <Eye size={11} /> : <EyeOff size={11} />}
-            {isWatched ? "已看" : "未看"}
+            {isWatched ? <Eye size={11} /> : isWantToWatch ? <Bookmark size={11} /> : <EyeOff size={11} />}
+            {isWatched ? "已看" : isWantToWatch ? "想看" : "未看"}
           </button>
           {isWatched && userRating !== null && (
             <span className="text-xs text-green-400 bg-black/50 px-1.5 py-0.5 rounded-full">
@@ -89,12 +92,14 @@ export function AnimeCard({ anime, entry, onToggleWatched, onSetRating, onSetCom
         </h2>
 
         {/* 开播时间 + 放送星期 */}
-        {(anime.air_date || anime.weekday) && (
-          <span className="text-zinc-500 text-xs mt-1">
-            {anime.air_date && `${anime.air_date} 开播`}
-            {anime.weekday && <span className="text-zinc-600"> · {anime.weekday}放送</span>}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+          {anime.air_date && (
+            <span className="text-zinc-500 text-xs">{anime.air_date} 开播</span>
+          )}
+          {anime.weekday && (
+            <span className="text-xs bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded-full">{anime.weekday}</span>
+          )}
+        </div>
 
         {/* 已看后显示：用户评分（十分制，绿色）+ 追剧进度 */}
         {isWatched && (

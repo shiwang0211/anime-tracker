@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 
 export interface WatchEntry {
   watched: boolean;
+  wantToWatch: boolean;
   rating: number | null;
   completionStatus: "completed" | "ongoing" | null;
   episodeProgress: number | null;
@@ -66,9 +67,17 @@ export function useWatchedAnime() {
   function toggleWatched(id: number) {
     setWatched((prev) => {
       const current = prev[id];
-      const next = current?.watched
-        ? { ...current, watched: false, rating: null, completionStatus: null, episodeProgress: null }
-        : { watched: true, rating: null, completionStatus: null, episodeProgress: null };
+      let next: WatchEntry;
+      if (current?.watched) {
+        // 已看 → 想看
+        next = { ...current, watched: false, wantToWatch: true, rating: null, completionStatus: null, episodeProgress: null };
+      } else if (current?.wantToWatch) {
+        // 想看 → 未看
+        next = { watched: false, wantToWatch: false, rating: null, completionStatus: null, episodeProgress: null };
+      } else {
+        // 未看 → 已看
+        next = { watched: true, wantToWatch: false, rating: null, completionStatus: null, episodeProgress: null };
+      }
       const updated = { ...prev, [id]: next };
       persist(updated);
       return updated;

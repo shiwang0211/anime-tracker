@@ -110,12 +110,23 @@ export async function fetchAnimeBySeason(year: number, month: SeasonMonth): Prom
     }
   }
 
-  return results.map((item) => ({
-    id: item.id,
-    title: item.name_cn || item.name,
-    image_url: item.images?.large ?? "",
-    score: item.rating?.score ?? null,
-    air_date: item.date || null,
-    weekday: item.air_weekday ? (WEEKDAY_CN[item.air_weekday] ?? null) : null,
-  }));
+  return results.map((item) => {
+    let weekday: string | null = null;
+    if (item.air_weekday && WEEKDAY_CN[item.air_weekday]) {
+      weekday = WEEKDAY_CN[item.air_weekday];
+    } else if (item.date) {
+      const d = new Date(item.date);
+      const day = d.getDay(); // 0=Sun, 1=Mon ... 6=Sat
+      const mapped = day === 0 ? 7 : day;
+      weekday = WEEKDAY_CN[mapped] ?? null;
+    }
+    return {
+      id: item.id,
+      title: item.name_cn || item.name,
+      image_url: item.images?.large ?? "",
+      score: item.rating?.score ?? null,
+      air_date: item.date || null,
+      weekday,
+    };
+  });
 }

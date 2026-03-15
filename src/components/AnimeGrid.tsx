@@ -5,16 +5,12 @@ import type { Anime, SeasonMonth } from "@/services/anime";
 import { useWatchedAnime } from "@/hooks/useWatchedAnime";
 import { AnimeCard } from "@/components/AnimeCard";
 
-type Filter = "all" | "watched";
+type Filter = "all" | "watched" | "wantToWatch";
 
 const FILTER_LABELS: Record<Filter, string> = {
   all: "全部",
   watched: "已看",
-};
-
-const SEASON_MONTHS: SeasonMonth[] = [1, 4, 7, 10];
-const SEASON_LABELS: Record<SeasonMonth, string> = {
-  1: "1 月番", 4: "4 月番", 7: "7 月番", 10: "10 月番",
+  wantToWatch: "想看",
 };
 
 function cacheKey(year: number, month: SeasonMonth) {
@@ -37,9 +33,19 @@ export function AnimeGrid({ initialAnimeList, initialYear, initialMonth }: Anime
   });
   const [isLoading, setIsLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const currentYear = new Date().getFullYear();
-  const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
+  // 生成年份+季度合并选项，从最新到最早
+  const seasonOptions: { year: number; month: SeasonMonth; label: string }[] = [];
+  const seasonMonths: SeasonMonth[] = [10, 7, 4, 1];
+  for (let y = currentYear; y >= currentYear - 4; y--) {
+    for (const m of seasonMonths) {
+      seasonOptions.push({ year: y, month: m, label: `${y}年${m}月番` });
+    }
+  }
 
   async function loadSeason(year: number, month: SeasonMonth) {
     const key = cacheKey(year, month);
@@ -62,12 +68,33 @@ export function AnimeGrid({ initialAnimeList, initialYear, initialMonth }: Anime
     }
   }
 
+  function handleSearch() {
+    const q = searchInput.trim();
+    if (q === "") return;
+    setSearchQuery(q);
+  }
+
+  function handleClear() {
+    setSearchInput("");
+    setSearchQuery("");
+  }
+
   const currentList = seasonCache[cacheKey(selectedYear, selectedMonth)] ?? [];
 
-  const filtered = currentList.filter((anime) => {
-    if (filter === "watched" && !watched[anime.id]?.watched) return false;
-    return true;
-  });
+  const filtered = currentList
+    .filter((anime) => {
+      if (!anime.image_url || anime.score === 0 || !anime.air_date) return false;
+      if (filter === "watched" && !watched[anime.id]?.watched) return false;
+      if (filter === "wantToWatch" && !watched[anime.id]?.wantToWatch) return false;
+      if (searchQuery && !anime.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (a.score === null && b.score === null) return 0;
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score;
+    });
 
   return (
     <>
@@ -87,27 +114,48 @@ export function AnimeGrid({ initialAnimeList, initialYear, initialMonth }: Anime
           </button>
         ))}
 
-        {/* 年份 + 季度 下拉栏 */}
-        <div className="ml-auto flex gap-2">
-          <select
-            value={selectedYear}
-            onChange={(e) => loadSeason(parseInt(e.target.value), selectedMonth)}
-            disabled={isLoading}
-            className="bg-zinc-800 text-zinc-300 text-sm rounded-full px-3 py-1.5 border border-zinc-700 focus:outline-none focus:border-pink-500 cursor-pointer disabled:opacity-50"
+        {/* 搜索栏 */}
+        <div className="flex gap-1 flex-1 min-w-0 mx-2">
+          <div className="relative flex-1 min-w-0">
+            <input
+              type="text"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+              placeholder="输入作品名"
+              className="w-full bg-zinc-800 text-white text-sm rounded-full pl-4 pr-8 py-1.5 border border-zinc-700 placeholder-zinc-600 focus:outline-none focus:border-pink-500"
+            />
+            {searchInput && (
+              <button
+                onClick={handleClear}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                aria-label="清空搜索"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleSearch}
+            className="bg-zinc-800 text-zinc-300 text-sm rounded-full px-3 py-1.5 border border-zinc-700 hover:text-white hover:border-pink-500 transition-colors whitespace-nowrap"
           >
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>{y} 年</option>
-            ))}
-          </select>
+            搜索
+          </button>
+        </div>
 
+        {/* 年份+季度 合并下拉栏 */}
+        <div className="ml-auto">
           <select
-            value={selectedMonth}
-            onChange={(e) => loadSeason(selectedYear, parseInt(e.target.value) as SeasonMonth)}
+            value={cacheKey(selectedYear, selectedMonth)}
+            onChange={(e) => {
+              const [y, m] = e.target.value.split("-").map(Number);
+              loadSeason(y, m as SeasonMonth);
+            }}
             disabled={isLoading}
             className="bg-zinc-800 text-zinc-300 text-sm rounded-full px-3 py-1.5 border border-zinc-700 focus:outline-none focus:border-pink-500 cursor-pointer disabled:opacity-50"
           >
-            {SEASON_MONTHS.map((m) => (
-              <option key={m} value={m}>{SEASON_LABELS[m]}</option>
+            {seasonOptions.map(({ year, month, label }) => (
+              <option key={`${year}-${month}`} value={`${year}-${month}`}>{label}</option>
             ))}
           </select>
         </div>
@@ -133,7 +181,7 @@ export function AnimeGrid({ initialAnimeList, initialYear, initialMonth }: Anime
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex items-center justify-center h-64 text-zinc-500 text-sm">
-          {filter === "watched" ? "还没有标记已看的动漫" : "没有符合条件的动漫"}
+          {filter === "watched" ? "还没有标记已看的动漫" : filter === "wantToWatch" ? "还没有标记想看的动漫" : "没有符合条件的动漫"}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
